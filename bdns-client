@@ -1,0 +1,183 @@
+#!/usr/bin/php
+<?php
+
+// Parse user-specified options
+$programName = array_shift($argv);
+$options = array(
+	'h'          => FALSE,
+	'help'       => FALSE,
+	'dry-run'    => FALSE,
+	'foreground' => FALSE,
+	'conf-file'  => '/usr/local/etc/bdns',
+);
+foreach ($argv as $arg) {
+	$arg = trim($arg, '- ');
+
+	$value = TRUE;
+	$pos = strrpos($arg, '=');
+	if ($pos !== FALSE) {
+		$value = substr($arg, $pos+1);
+		$arg   = substr($arg, 0, $pos);
+	}
+	$options[$arg] = $value;
+}
+
+if ($options['help'] || $options['h']) {
+	echo '
+Usage: 
+  $programName [options]
+Options:
+  --conf-file=<file>
+	Load the configuration from file <file> instead of ' . $options['conf-file'] . '.
+  --dry-run    
+	Just show what would be done, without actually doing anything.
+  --foregound
+  	Show log messages instead of logging to syslog.
+  -h, --help   
+	Show this help message.
+
+
+';
+	exit(0);
+}
+
+// Load the configuration file
+$conf = parse_ini_file($options['conf-file'], true);
+
+$updater = new DnsUpdater($conf['server']['ip'], $conf['backup_dns']['host'], 
+	$conf['backup_dns']['port']);
+
+if ($options['foreground']) {
+	function write_log($level, $message) {
+		echo $message . "\n";
+	}
+} else {
+	openlog($conf['syslog']['prefix'], LOG_CONS | LOG_PID, LOG_DAEMON);
+	function write_log($level, $message) {
+		syslog($level, $message);
+	}
+}
+
+
+if ($options['dry-run']) {
+	write_log(LOG_NOTICE, "Dry-run specified, the following actions will NOT be really processed.");
+}
+
+// Fetch the current (new) list of defined zones (domains)
+if (!is_dir($conf['paths']['zones'])) {
+	write_log(LOG_ERR, 'The configured path to the zones is not a directory');
+	exit(1);
+}
+$new = array();
+$fh = opendir($conf['paths']['zones']);
+if (!$fh) {
+	write_log(LOG_ERR, 'Unable to open the zones directory');
+	exit(1);
+}
+while (($file = readdir($fh)) !== FALSE) {
+	if ($file == '.' || $file == '..') {
+		continue;
+	}
+	$pos = strrpos($file, $conf['paths']['zone_suffix']);
+	if ($pos !== FALSE) {
+		$new[] = trim(substr($file, 0, $pos));
+	}
+}
+
+// Fetch the previous (old) list of domains already setup
+try {
+	$old = $updater->getDomains();
+} catch (Exception $e) {
+	write_log(LOG_ERR, $e->getMessage());
+	exit(1);
+}
+
+// Compute the differences and add/remove domains as needed
+$removed = array_diff($old, $new);
+$added = array_diff($new, $old);
+
+foreach($removed as $domain) {
+	$domain = trim($domain);
+	try {
+		if (!$options['dry-run']) {
+			$updater->removeDomain($domain);
+		}
+		write_log(LOG_NOTICE, 'Removed domain ' . $domain . ' from the secondary DNS server');
+	} catch(Exception $fault) {
+		write_log(LOG_NOTICE, 'Failed to remove domain ' . $domain . ' from the secondary DNS server: ' . $fault->getMessage());
+	}
+}
+foreach($added as $domain) {
+	$domain = trim($domain);
+	try {
+		if (!$options['dry-run']) {
+			$updater->addDomain($domain);
+		}
+		write_log(LOG_NOTICE, 'Added domain ' . $domain . ' to the secondary DNS server');
+	} catch(Exception $fault) {
+		write_log(LOG_NOTICE, 'Failed to add domain ' . $domain . ' to the secondary DNS server: ' . $fault->getMessage());
+	}
+}
+
+class DnsUpdater {
+	private $_ip;
+	private $_dnshost;
+	private $_dnsport;
+
+	private $_context;
+
+	public function __construct($ip, $dnshost, $dnsport) {
+		$this->_ip   = $ip;
+		$this->_dnshost = $dnshost;
+		$this->_dnsport = $dnsport;
+	}
+
+	private function _initializeContex() {
+		$opts = array(
+		    'socket' => array(
+		        'bindto' => $this->_ip,
+		    ),
+		);
+		$this->_context = stream_context_create($opts);
+	}
+
+	private function _get($path) {
+		$url = 'http://' . $this->_dnshost . ':' . $this->_dnsport . '/' . $path;
+		$result = @file_get_contents($url, false, $this->_context);
+		if ($result === false) {
+			throw new Exception("unable to connect to the server");
+		}
+		return trim($result);
+	}
+
+	public function addDomain($domain) {
+		$result = $this->_get('add/' . $domain);
+		if ($result != "OK") {
+			throw new Exception("The server returned an error (" . $result . ")");
+		}
+	}
+
+	public function removeDomain($domain) {
+		$result = $this->_get('remove/' . $domain);
+		if ($result != "OK") {
+			throw new Exception("The server returned an error (" . $result . ")");
+		}
+	}
+
+	public function getDomains() {
+		// Fetch the list of domains (the result is a single domain per line)
+		$result = $this->_get('list');
+
+		// Read the contents by line, ignoring empty lines.
+		$lines = preg_split('(\n\r|\n)', $result);
+		$domains = array();
+		foreach ($lines as $line) {
+			$line = trim($line);
+			if ($line != "") {
+				$domains[] = $line;
+			}
+		}
+		
+		return $domains;
+	}
+}

@@ -136,7 +136,7 @@ class DnsUpdater {
 	private function _initializeContext() {
 		$opts = array(
 		    'socket' => array(
-		        'bindto' => $this->_ip,
+		        'bindto' => $this->_ip . ':0',
 		    ),
 		);
 		$this->_context = stream_context_create($opts);

@@ -130,9 +130,10 @@ class DnsUpdater {
 		$this->_ip   = $ip;
 		$this->_dnshost = $dnshost;
 		$this->_dnsport = $dnsport;
+		$this->_initializeContext();
 	}
 
-	private function _initializeContex() {
+	private function _initializeContext() {
 		$opts = array(
 		    'socket' => array(
 		        'bindto' => $this->_ip,

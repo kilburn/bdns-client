@@ -44,8 +44,8 @@ Options:
 // Load the configuration file
 $conf = parse_ini_file($options['conf-file'], true);
 
-$updater = new DnsUpdater($conf['server']['ip'], $conf['backup_dns']['host'], 
-	$conf['backup_dns']['port']);
+$updater = new DnsUpdater($conf['server']['ip'], $conf['server']['proxy'], 
+	$conf['backup_dns']['host'], $conf['backup_dns']['port']);
 
 if ($options['foreground']) {
 	function write_log($level, $message) {
@@ -121,13 +121,15 @@ foreach($added as $domain) {
 
 class DnsUpdater {
 	private $_ip;
+	private $_proxy;
 	private $_dnshost;
 	private $_dnsport;
 
 	private $_context;
 
-	public function __construct($ip, $dnshost, $dnsport) {
+	public function __construct($ip, $proxy, $dnshost, $dnsport) {
 		$this->_ip   = $ip;
+		$this->_proxy = $proxy;
 		$this->_dnshost = $dnshost;
 		$this->_dnsport = $dnsport;
 		$this->_initializeContext();
@@ -138,6 +140,9 @@ class DnsUpdater {
 		    'socket' => array(
 		        'bindto' => $this->_ip . ':0',
 		    ),
+		    'http' => array(
+		    	'proxy' => $this->_proxy,
+			),
 		);
 		$this->_context = stream_context_create($opts);
 	}

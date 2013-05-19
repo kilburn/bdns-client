@@ -2,6 +2,8 @@
 ; The ip from which requests will originate. This will end up being
 ; used as the master IP in the secondary server's bind configuration.
 ip       = xxx.xxx.xxx.xxx
+; Connect through a proxy (leave empty to connect directly)
+proxy    = 
 
 [backup_dns]
 host = the.secondary.server.tld

@@ -16,10 +16,10 @@ To install bdns-client it is necessary to perform three basic steps:
 
 First of all, you should copy the required files into appropriate locations in your filesystem. You can change the routes displayed here so long as you update the configuration file accordingly.
 
-	cp etc/ovh-dnsupdater /usr/local/etc/bnds
+	cp etc/bdns /usr/local/etc/bnds
 	chmod 640 /usr/local/etc/bnds
-	cp ovh-dnsupdater /usr/local/sbin/ovh-dnsupdater
-	chmod 755 /usr/local/sbin/ovh-dnsupdater
+	cp bdns-client /usr/local/sbin/bdns-client
+	chmod 755 /usr/local/sbin/bdns-client
 
 ### Setup the utility ###
 

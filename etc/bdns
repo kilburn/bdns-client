@@ -8,6 +8,8 @@ proxy    =
 [backup_dns]
 host = the.secondary.server.tld
 port = 54515
+username = client1
+password = password1
 
 [paths]
 zones       = /var/cache/bind

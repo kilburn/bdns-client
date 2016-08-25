@@ -5,11 +5,17 @@ ip       = xxx.xxx.xxx.xxx
 ; Connect through a proxy (leave empty to connect directly)
 proxy    = 
 
-[backup_dns]
+[backup_dns1]
 host = the.secondary.server.tld
 port = 54515
 username = client1
 password = password1
+
+;[backup_dns2]
+;host = another.secondary.server.tld
+;port = 54515
+;username = client1
+;password = password1
 
 [paths]
 zones       = /var/cache/bind

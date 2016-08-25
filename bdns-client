@@ -45,9 +45,7 @@ Options:
 // Load the configuration file
 $conf = parse_ini_file($options['conf-file'], true);
 
-$updater = new DnsUpdater($conf['server']['ip'], $conf['server']['proxy'], 
-    $conf['backup_dns']['url'], $conf['backup_dns']['username'], $conf['backup_dns']['password']);
-
+// Setup logging
 if ($options['foreground']) {
     function write_log($level, $message) {
         echo $message . "\n";
@@ -59,9 +57,17 @@ if ($options['foreground']) {
     }
 }
 
-
+// And operation mode
 if ($options['dry-run']) {
     write_log(LOG_NOTICE, "Dry-run specified, the following actions will NOT be really processed.");
+}
+
+// Load the defined servers
+foreach ($conf as $key=>$value) {
+    if (strpos($key, 'backup_dns') !== 0) {
+        continue;
+    }
+    $servers[] = $value;
 }
 
 // Fetch the current (new) list of defined zones (domains)
@@ -85,40 +91,49 @@ while (($file = readdir($fh)) !== FALSE) {
     }
 }
 
-// Fetch the previous (old) list of domains already setup
-try {
-    $old = $updater->getDomains();
-} catch (Exception $e) {
-    write_log(LOG_ERR, $e->getMessage());
-    exit(1);
-}
+$result = 0;
+foreach ($servers as $server) {
+    $updater = new DnsUpdater($conf['server']['ip'], $conf['server']['proxy'], 
+        $server['url'], $server['username'], $server['password']);
 
-// Compute the differences and add/remove domains as needed
-$removed = array_diff($old, $new);
-$added = array_diff($new, $old);
-
-foreach($removed as $domain) {
-    $domain = trim($domain);
+    // Fetch the previous (old) list of domains already setup
     try {
-        if (!$options['dry-run']) {
-            $updater->removeDomain($domain);
+        $old = $updater->getDomains();
+    } catch (Exception $e) {
+        write_log(LOG_ERR, $e->getMessage());
+        $result=1; break;
+    }
+
+    // Compute the differences and add/remove domains as needed
+    $removed = array_diff($old, $new);
+    $added = array_diff($new, $old);
+
+    foreach($removed as $domain) {
+        $domain = trim($domain);
+        try {
+            if (!$options['dry-run']) {
+                $updater->removeDomain($domain);
+            }
+            write_log(LOG_NOTICE, 'Removed domain ' . $domain . ' from the secondary DNS server at ' . $server['url']);
+        } catch(Exception $fault) {
+            write_log(LOG_NOTICE, 'Failed to remove domain ' . $domain . ' from the secondary DNS server at '
+                . $server['url']. ': ' . $fault->getMessage());
         }
-        write_log(LOG_NOTICE, 'Removed domain ' . $domain . ' from the secondary DNS server');
-    } catch(Exception $fault) {
-        write_log(LOG_NOTICE, 'Failed to remove domain ' . $domain . ' from the secondary DNS server: ' . $fault->getMessage());
+    }
+    foreach($added as $domain) {
+        $domain = trim($domain);
+        try {
+            if (!$options['dry-run']) {
+                $updater->addDomain($domain);
+            }
+            write_log(LOG_NOTICE, 'Added domain ' . $domain . ' to the secondary DNS server at ' . $server['url']);
+        } catch(Exception $fault) {
+            write_log(LOG_NOTICE, 'Failed to add domain ' . $domain . ' to the secondary DNS server at '
+                . $server['url'] . ': ' . $fault->getMessage());
+        }
     }
 }
-foreach($added as $domain) {
-    $domain = trim($domain);
-    try {
-        if (!$options['dry-run']) {
-            $updater->addDomain($domain);
-        }
-        write_log(LOG_NOTICE, 'Added domain ' . $domain . ' to the secondary DNS server');
-    } catch(Exception $fault) {
-        write_log(LOG_NOTICE, 'Failed to add domain ' . $domain . ' to the secondary DNS server: ' . $fault->getMessage());
-    }
-}
+exit($result);
 
 class DnsUpdater {
     private $_ip;
